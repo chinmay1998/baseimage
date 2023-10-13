@@ -1,0 +1,17 @@
+FROM ubuntu:20.04 as base-image
+
+# Update the package lists and install some basic utilities
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    git \
+    && apt-get clean
+
+# Set the working directory
+WORKDIR /app
+mkdir scripts
+COPY ./aws-mendix-dphilips/Base_image/scripts/* /app/scripts/
+chmod 766 scripts
+sh /scripts/security-update.sh
+
+
