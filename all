@@ -1,0 +1,117 @@
+Clean_ubuntu.sh
+
+#!/bin/bash -e
+
+# --- Ubuntu variant only, for other variants, see /scripts folder
+
+#-------------------------------------------------------------------
+# Performs cleanup, ensure unnecessary packages and package lists
+# are safely removed, without triggering Docker AUFS permission bug
+#-------------------------------------------------------------------
+
+apt-get autoclean -y && \
+apt-get autoremove -y && \
+rm -rf /var/lib/{cache,log}/ && \
+rm -rf /var/lib/apt/lists/*.lz4 && \
+rm -rf /tmp/* /var/tmp/* && \
+rm -rf /usr/share/doc/ && \
+rm -rf /usr/share/man/
+
+install_goss.sh
+#!/bin/bash -e
+
+# Use goss for serverspec-like testing
+# @see https://goss.rocks
+#
+# Downloads, verifies, and installs
+# Requires curl and sha256sum to be present
+GOSS_VERSION=v0.3.22
+GOSS_SHA256=634a9133b817deefdc5d1e5b812cc55e835ef20c9e16630ffc9034b009f4a856
+
+curl -fL https://github.com/aelsabbahy/goss/releases/download/${GOSS_VERSION}/goss-linux-amd64 -o /usr/local/bin/goss
+
+# NOTE: extra whitespace between SHA sum and location is intentional, required for Alpine
+echo "${GOSS_SHA256}  /usr/local/bin/goss" | sha256sum -c - 2>&1 | grep OK
+chmod +x /usr/local/bin/goss
+
+install_s6.sh
+#!/bin/bash -e
+
+# Add S6 for zombie reaping, boot-time coordination, signal transformation/distribution
+# @see https://github.com/just-containers/s6-overlay
+#
+# Downloads, verifies, and extracts
+ARCH="x86_64"
+
+S6_NAME=s6-overlay-${ARCH}
+S6_VERSION=v3.1.1.2
+
+apt-get update && apt-get install -y nginx xz-utils
+echo "daemon off;" >> /etc/nginx/nginx.conf
+
+PUBLIC_KEY=6101B2783B2FD161
+
+wget -P /tmp https://github.com/just-containers/s6-overlay/releases/download/${S6_VERSION}/s6-overlay-noarch.tar.xz
+wget -P /tmp https://github.com/just-containers/s6-overlay/releases/download/${S6_VERSION}/${S6_NAME}.tar.xz
+wget -P /tmp https://github.com/just-containers/s6-overlay/releases/download/${S6_VERSION}/s6-overlay-symlinks-arch.tar.xz
+wget -P /tmp https://github.com/just-containers/s6-overlay/releases/download/${S6_VERSION}/${S6_NAME}.tar.xz.sha256
+
+cd tmp
+sha256sum -c /tmp/${S6_NAME}.tar.xz.sha256 | grep OK
+
+tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz
+tar -C / -Jxpf /tmp/s6-overlay-x86_64.tar.xz
+tar -C / -Jxpf /tmp/s6-overlay-symlinks-arch.tar.xz
+
+rm /tmp/s6-overlay-noarch.tar.xz && rm /tmp/${S6_NAME}.tar.xz && rm /tmp/${S6_NAME}.tar.xz.sha256
+
+
+
+security_updates_ubuntu.sh
+#!/bin/bash
+
+# --- Ubuntu variant only, for other variants, see /scripts folder
+
+#-------------------------------------------------------------------
+# Upgrade just the packages listed as security, without affecting
+# any subsequent usages of apt-get
+#-------------------------------------------------------------------
+
+apt-get update && \
+grep security /etc/apt/sources.list > /tmp/security.list && \
+apt-get upgrade -oDir::Etc::Sourcelist=/tmp/security.list -yq && \
+rm /tmp/security.list
+
+
+ubuntu_apt_cleanmode.sh
+#!/bin/bash
+
+# --- Ubuntu variant only
+
+#----------------------------------------------------------------------
+# Set apt package manager to not use cache, not write out docs
+# NOTE: leaving generated locales, copyrights in place
+# @see https://wiki.ubuntu.com/ReducingDiskFootprint#Drop_unnecessary_files
+#----------------------------------------------------------------------
+
+touch /etc/dpkg/dpkg.cfg.d/01_nodoc
+cat <<EOF > /etc/dpkg/dpkg.cfg.d/01_nodoc
+path-exclude=/usr/share/man/*
+path-exclude /usr/share/groff/*
+path-exclude /usr/share/info/*
+
+# Delete docs
+path-exclude=/usr/share/doc/*
+# we need to keep copyright files for legal reasons
+path-include /usr/share/doc/*/copyright
+EOF
+
+touch /etc/apt/apt.conf.d/02nocache
+cat <<EOF > /etc/apt/apt.conf.d/02nocache
+ Dir::Cache {
+   srcpkgcache "";
+   pkgcache "";
+ }
+EOF
+
+
